@@ -4,9 +4,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import load_settings
-from .schemas import HealthResponse, PredictRequest, PredictResponse
-from .service import ORCDPredictService
+from config import load_settings
+from schemas import HealthResponse, PredictRequest, PredictResponse
+from service import ORCDPredictService
 
 settings = load_settings()
 predict_service = ORCDPredictService(settings=settings)

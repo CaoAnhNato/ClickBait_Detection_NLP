@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from .config import AppSettings
+from config import AppSettings
 
 
 class ORCDPredictService:
@@ -70,7 +70,7 @@ class ORCDPredictService:
             sys.modules.pop("litellm", None)
 
         try:
-            from . import litellm_compat
+            import litellm_compat
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Failed to load litellm compatibility shim: {exc}") from exc
 
