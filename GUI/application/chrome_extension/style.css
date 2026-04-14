@@ -1,0 +1,58 @@
+#cbd-hover-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  max-width: 320px;
+  min-width: 210px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(8px);
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+#cbd-hover-tooltip.cbd-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+#cbd-hover-tooltip .cbd-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  margin-bottom: 4px;
+}
+
+#cbd-hover-tooltip .cbd-detail {
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+#cbd-hover-tooltip.cbd-info {
+  color: #eff6ff;
+  border-color: rgba(96, 165, 250, 0.55);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.88));
+}
+
+#cbd-hover-tooltip.cbd-danger {
+  color: #fff7ed;
+  border-color: rgba(251, 146, 60, 0.65);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.96), rgba(234, 88, 12, 0.9));
+}
+
+#cbd-hover-tooltip.cbd-success {
+  color: #ecfdf5;
+  border-color: rgba(52, 211, 153, 0.65);
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.96), rgba(5, 150, 105, 0.9));
+}
+
+#cbd-hover-tooltip.cbd-error {
+  color: #fee2e2;
+  border-color: rgba(248, 113, 113, 0.7);
+  background: linear-gradient(135deg, rgba(69, 10, 10, 0.96), rgba(153, 27, 27, 0.9));
+}

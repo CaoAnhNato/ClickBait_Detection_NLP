@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clickbait Detector</title>
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --surface: #fffdf9;
+      --ink: #1d1a16;
+      --accent: #006d77;
+      --accent-2: #e29578;
+      --error: #9b2226;
+      --border: #ded7cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #f6d2b6 0%, rgba(246, 210, 182, 0) 40%),
+        radial-gradient(circle at 90% 100%, #bee5d6 0%, rgba(190, 229, 214, 0) 45%),
+        var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .card {
+      width: min(820px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.08);
+      padding: 24px;
+    }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: clamp(1.4rem, 3.2vw, 2rem);
+      letter-spacing: 0.2px;
+    }
+    form {
+      display: grid;
+      gap: 12px;
+    }
+    label {
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+    select, textarea, input, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 1rem;
+      padding: 12px;
+    }
+    textarea {
+      min-height: 130px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    button {
+      border: none;
+      background: linear-gradient(135deg, var(--accent), #1f5f99);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(0, 109, 119, 0.25);
+    }
+    .result {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f3f8f8;
+    }
+    .prompt {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f9f6f0;
+      font-family: "Courier New", monospace;
+      font-size: 0.88rem;
+      max-height: 280px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .error {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #efc2c4;
+      background: #fff1f2;
+      color: var(--error);
+      font-weight: 600;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: #5f5a51;
+    }
+    .rounds-grid {
+      margin-top: 12px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    }
+    .round-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .round-title {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 0.98rem;
+      font-weight: 800;
+    }
+    .round-line {
+      margin: 6px 0;
+      font-size: 0.9rem;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .round-key {
+      font-weight: 700;
+      color: #4a463e;
+    }
+    .flow-grid {
+      margin-top: 12px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+    .flow-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .flow-title {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 0.98rem;
+      font-weight: 800;
+    }
+    .flow-condition {
+      margin: 0 0 8px;
+      font-size: 0.84rem;
+      color: #6e685e;
+      line-height: 1.35;
+    }
+    .flow-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 6px;
+      font-size: 0.88rem;
+      line-height: 1.35;
+    }
+    .badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .badge-pass {
+      color: #0f5132;
+      background: #d1e7dd;
+      border: 1px solid #badbcc;
+    }
+    .badge-fail {
+      color: #842029;
+      background: #f8d7da;
+      border: 1px solid #f5c2c7;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Clickbait Detection</h1>
+    <form method="post" action="/">
+      <label for="model">Model</label>
+      <select id="model" name="model" required>
+        {% for model in model_options %}
+          <option value="{{ model.key }}" {% if model.key == selected_model %}selected{% endif %}>
+            {{ model.label }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label for="text">Input text</label>
+      <textarea id="text" name="text" placeholder="Nhap cau can detect..." required>{{ input_text }}</textarea>
+
+      <div id="api-key-group">
+        <label for="api_key">API key (chi dung cho cac model API: GPT/Gemini/Qwen/Llama/ORCD)</label>
+        <input id="api_key" name="api_key" type="password" value="{{ api_key_input }}" autocomplete="off" placeholder="Nhap OpenAI API key" />
+        <div class="hint">Khi chon model API-based, API key la bat buoc.</div>
+      </div>
+
+      <div id="api-model-group">
+        <label for="custom_api_model">API model (tuy chon, dung ten model hop le cua API)</label>
+        <input
+          id="custom_api_model"
+          name="custom_api_model"
+          type="text"
+          value="{{ custom_api_model_input }}"
+          autocomplete="off"
+          placeholder="Vi du: gpt-4o-mini, gemini-2.0-flash, qwen-plus, llama-3.1-70b-instruct"
+        />
+        <div class="hint">Neu de trong, he thong se dung model mac dinh cua profile da chon.</div>
+      </div>
+
+      <div id="api-provider-group">
+        <label for="custom_api_provider">API provider (tuy chon)</label>
+        <input
+          id="custom_api_provider"
+          name="custom_api_provider"
+          type="text"
+          value="{{ custom_api_provider_input }}"
+          autocomplete="off"
+          placeholder="Vi du: openai, openrouter, gemini, ollama"
+        />
+        <div class="hint">Neu de trong, he thong tu suy ra provider tu base URL/profile.</div>
+      </div>
+
+      <div id="api-base-group">
+        <label for="custom_api_base">API base URL (tuy chon)</label>
+        <input
+          id="custom_api_base"
+          name="custom_api_base"
+          type="text"
+          value="{{ custom_api_base_input }}"
+          autocomplete="off"
+          placeholder="Vi du: https://api-v2.shopaikey.com/v1"
+        />
+        <div class="hint">Cho phep override endpoint khi can goi provider khac.</div>
+      </div>
+
+      <button type="submit">Detect</button>
+    </form>
+
+    {% if result %}
+      <section class="result">
+        <div><strong>Predicted Label:</strong> {{ result.label }}</div>
+        <div><strong>Confidence:</strong> {{ '%.4f'|format(result.confidence) }}</div>
+        <div><strong>Model:</strong> {{ result.model }}</div>
+        {% if result.api_model_used %}
+          <div><strong>API Model Used:</strong> {{ result.api_model_used }}</div>
+        {% endif %}
+        {% if result.elapsed_ms is defined %}
+          <div><strong>Detect runtime:</strong> {{ result.elapsed_ms }} ms</div>
+        {% endif %}
+        {% if result.raw_response %}
+          <div><strong>Raw Response:</strong> {{ result.raw_response }}</div>
+        {% endif %}
+
+        {% if result.telemetry %}
+          <div style="margin-top: 10px;"><strong>Runtime Telemetry:</strong></div>
+          {% if result.telemetry.api_calls is defined %}
+            <div><strong>API Calls:</strong> {{ result.telemetry.api_calls }}</div>
+          {% endif %}
+          {% if result.telemetry.api_network_calls is defined %}
+            <div><strong>API Network Calls:</strong> {{ result.telemetry.api_network_calls }}</div>
+          {% endif %}
+          {% if result.telemetry.transport_fallbacks is defined %}
+            <div><strong>Transport Fallbacks:</strong> {{ result.telemetry.transport_fallbacks }}</div>
+          {% endif %}
+          {% if result.telemetry.score_response_format_skipped is defined %}
+            <div><strong>Score Response-Format Skipped:</strong> {{ result.telemetry.score_response_format_skipped }}</div>
+          {% endif %}
+          {% if result.telemetry.api_time_ms is defined %}
+            <div><strong>Total API Time:</strong> {{ result.telemetry.api_time_ms }} ms</div>
+          {% endif %}
+          {% if result.telemetry.reasoning_generation_ms is defined %}
+            <div><strong>Reasoning Generation:</strong> {{ result.telemetry.reasoning_generation_ms }} ms</div>
+          {% endif %}
+          {% if result.telemetry.model_load_ms is defined %}
+            <div><strong>Model Load:</strong> {{ result.telemetry.model_load_ms }} ms</div>
+          {% endif %}
+          {% if result.telemetry.model_inference_ms is defined %}
+            <div><strong>Model Inference:</strong> {{ result.telemetry.model_inference_ms }} ms</div>
+          {% endif %}
+          {% if result.telemetry.gates %}
+            <div><strong>Gate Timings:</strong>
+              original={{ result.telemetry.gates.original_gate_ms }} ms,
+              parallel={{ result.telemetry.gates.parallel_branches_ms }} ms,
+              agree={{ result.telemetry.gates.agree_gate_ms }} ms,
+              disagree={{ result.telemetry.gates.disagree_gate_ms }} ms
+            </div>
+          {% endif %}
+        {% endif %}
+
+        {% if result.orcd_generated %}
+          <div style="margin-top: 10px;"><strong>ORCD Generated Signals:</strong></div>
+          <div><strong>Original Score:</strong> {{ result.orcd_generated.original_score }}</div>
+          <div><strong>Agree Score:</strong> {{ result.orcd_generated.agree_score }}</div>
+          <div><strong>Disagree Score:</strong> {{ result.orcd_generated.disagree_score }}</div>
+          <div><strong>Agree Reason:</strong> {{ result.orcd_generated.agree_reason }}</div>
+          <div><strong>Disagree Reason:</strong> {{ result.orcd_generated.disagree_reason }}</div>
+
+          {% if result.orcd_generated.flow_trace %}
+            <div style="margin-top: 10px;"><strong>ORCD Flow (Gate-by-Gate):</strong></div>
+            <div class="flow-grid">
+              <article class="flow-card">
+                <h4 class="flow-title">Step 1: Original Score Gate</h4>
+                <p class="flow-condition">Condition: {{ result.orcd_generated.flow_trace.original_gate.condition }}</p>
+                <div class="round-line">
+                  <span class="round-key">Final original_score:</span> {{ result.orcd_generated.flow_trace.original_gate.final_score }}
+                  <span class="badge {% if result.orcd_generated.flow_trace.original_gate.passed %}badge-pass{% else %}badge-fail{% endif %}">
+                    {% if result.orcd_generated.flow_trace.original_gate.passed %}PASS{% else %}FAIL{% endif %}
+                  </span>
+                </div>
+                <ol class="flow-list">
+                  {% for attempt in result.orcd_generated.flow_trace.original_gate.attempts %}
+                    <li>
+                      attempt {{ attempt.attempt }} ({{ attempt.source }}):
+                      original_score={{ attempt.original_score }}
+                      {% if attempt.passed %}[PASS]{% else %}[RETRY]{% endif %}
+                    </li>
+                  {% endfor %}
+                </ol>
+              </article>
+
+              <article class="flow-card">
+                <h4 class="flow-title">Step 2: Agree Gate</h4>
+                <p class="flow-condition">Condition: {{ result.orcd_generated.flow_trace.agree_gate.condition }}</p>
+                <div class="round-line">
+                  <span class="round-key">Final agree_score:</span> {{ result.orcd_generated.flow_trace.agree_gate.final_score }}
+                  <span class="badge {% if result.orcd_generated.flow_trace.agree_gate.passed %}badge-pass{% else %}badge-fail{% endif %}">
+                    {% if result.orcd_generated.flow_trace.agree_gate.passed %}PASS{% else %}FAIL{% endif %}
+                  </span>
+                </div>
+                <ol class="flow-list">
+                  {% for item in result.orcd_generated.flow_trace.agree_gate.iterations %}
+                    <li>
+                      iter {{ item.iteration }} ({{ item.source }}):
+                      agree_score={{ item.agree_score }};
+                      agree_reason={{ item.agree_reason }}
+                      {% if item.passed %}[PASS]{% else %}[RETRY]{% endif %}
+                    </li>
+                  {% endfor %}
+                </ol>
+              </article>
+
+              <article class="flow-card">
+                <h4 class="flow-title">Step 3: Disagree Gate</h4>
+                <p class="flow-condition">Condition: {{ result.orcd_generated.flow_trace.disagree_gate.condition }}</p>
+                <div class="round-line">
+                  <span class="round-key">Final dis_score:</span> {{ result.orcd_generated.flow_trace.disagree_gate.final_score }}
+                  <span class="badge {% if result.orcd_generated.flow_trace.disagree_gate.passed %}badge-pass{% else %}badge-fail{% endif %}">
+                    {% if result.orcd_generated.flow_trace.disagree_gate.passed %}PASS{% else %}FAIL{% endif %}
+                  </span>
+                </div>
+                <ol class="flow-list">
+                  {% for item in result.orcd_generated.flow_trace.disagree_gate.iterations %}
+                    <li>
+                      iter {{ item.iteration }} ({{ item.source }}):
+                      dis_score={{ item.dis_score }};
+                      dis_reason={{ item.dis_reason }}
+                      {% if item.passed %}[PASS]{% else %}[RETRY]{% endif %}
+                    </li>
+                  {% endfor %}
+                </ol>
+              </article>
+            </div>
+          {% endif %}
+        {% endif %}
+
+        {% if result.orcd_process %}
+          <div style="margin-top: 10px;"><strong>ORCD Process Timeline:</strong></div>
+          <pre class="prompt">{% for step in result.orcd_process %}[{{ step.step }}][{{ step.kind }}] {{ step.raw }}
+{% endfor %}</pre>
+        {% endif %}
+
+        {% if result.prompt_preview %}
+          <div style="margin-top: 10px;"><strong>Prompt Request (API payload):</strong></div>
+          <pre class="prompt">{{ result.prompt_preview }}</pre>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if error %}
+      <section class="error">{{ error }}</section>
+    {% endif %}
+  </main>
+
+  <script>
+    (function () {
+      const modelSelect = document.getElementById("model");
+      const apiKeyGroup = document.getElementById("api-key-group");
+      const apiKeyInput = document.getElementById("api_key");
+      const apiModelGroup = document.getElementById("api-model-group");
+      const apiProviderGroup = document.getElementById("api-provider-group");
+      const apiBaseGroup = document.getElementById("api-base-group");
+
+      function toggleApiKey() {
+        const modelKey = modelSelect.value;
+        const needsApiKey = (
+          modelKey === "gpt4o-zero" ||
+          modelKey === "gpt4o-few" ||
+          modelKey === "gemini-zero" ||
+          modelKey === "qwen-zero" ||
+          modelKey === "llama-zero" ||
+          modelKey === "orcd-gpt35" ||
+          modelKey === "orcd-gpt4o"
+        );
+        apiKeyGroup.style.display = needsApiKey ? "block" : "none";
+        apiKeyInput.required = needsApiKey;
+        apiModelGroup.style.display = needsApiKey ? "block" : "none";
+        apiProviderGroup.style.display = needsApiKey ? "block" : "none";
+        apiBaseGroup.style.display = needsApiKey ? "block" : "none";
+      }
+
+      modelSelect.addEventListener("change", toggleApiKey);
+      toggleApiKey();
+    })();
+  </script>
+</body>
+</html>

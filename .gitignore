@@ -1,0 +1,58 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch & HuggingFace Machine Learning Checkpoints / Weights
+*.pth
+*.pt
+*.ckpt
+*.bin
+*.safetensors
+*.h5
+*.onnx
+
+# Local Workspaces & Desktop Configuration
+desktop.ini
+.DS_Store
+
+# IDE and Editor Directories
+.idea/
+.vscode/
+*.swp
+*.swo
+.spyderproject
+.spyproject
+
+# Data and Notebook Checkpoints
+*.csv
+*.tsv
+*.json
+!evaluation_results.json
+.ipynb_checkpoints
+data/
+datasets/
+GPT-Shot/**/predictions.csv
+GPT-Shot/**/checkpoint.txt
+results/
+logs/
+
+# Test Reports and Coverages
+.coverage
+htmlcov/
+.pytest_cache/
+test-reports/
+
+# Builds / Distributions
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,57 @@
+{
+  "training_session": {
+    "start_time": "2026-03-25T03:12:05.745375",
+    "end_time": "2026-03-25T03:13:49.503585",
+    "total_duration_seconds": 103.75821471214294,
+    "hyperparameters": {
+      "learning_rate": 2e-05,
+      "batch_size": 32,
+      "max_length": 128,
+      "epochs": 50,
+      "patience": 10,
+      "use_amp": true
+    }
+  },
+  "models": [
+    {
+      "model_name": "facebook/bart-large-mnli",
+      "status": "completed",
+      "best_epoch": 19,
+      "best_metrics": {
+        "accuracy": 0.9644351464435147,
+        "macro_f1": 0.9604926026944376,
+        "clickbait_f1": 0.9480122324159022
+      },
+      "final_metrics": {
+        "accuracy": 0.9623430962343096,
+        "macro_f1": 0.9582297654186733,
+        "clickbait_f1": 0.9451219512195121
+      },
+      "early_stopped": true,
+      "epochs_trained": 29,
+      "training_time_seconds": 648.2962000370026
+    },
+    {
+      "model_name": "valurank/distilroberta-clickbait",
+      "status": "completed",
+      "best_epoch": 7,
+      "best_metrics": {
+        "accuracy": 0.9581589958158996,
+        "macro_f1": 0.9534521375012173,
+        "clickbait_f1": 0.9386503067484663
+      },
+      "final_metrics": {
+        "accuracy": 0.9476987447698745,
+        "macro_f1": 0.9419008863153493,
+        "clickbait_f1": 0.9235474006116208
+      },
+      "early_stopped": true,
+      "epochs_trained": 17,
+      "training_time_seconds": 94.55703949928284
+    }
+  ],
+  "best_overall_model": {
+    "model_name": "facebook/bart-large-mnli",
+    "clickbait_f1": 0.9480122324159022
+  }
+}
