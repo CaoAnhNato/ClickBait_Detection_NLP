@@ -60,9 +60,18 @@ bash train_optimized.sh
 ```
 
 ### Running the Inference Backend (GUI/API Server)
+
+To run the realtime detection backend, you will pass settings via a `.env` file rather than hardcoding API keys. A sample environment file `.env.example` is provided:
+
 ```bash
+# 1. Setup your environment keys
+cp .env.example .env
+# Edit .env with your favorite editor and paste your ORCD_API_KEY.
+
+# 2. Run the Uvicorn server directly from the root
+# The python-dotenv package will automatically load your .env into the application
 cd GUI/application/backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000 --env-file ../../../.env
 ```
 > Ensure that model weights are placed securely inside their corresponding component folders (`Bert_Fami/weights`, `ORCD/.../weight`, etc.) prior to inference.
 
