@@ -72,3 +72,7 @@ test-reports/
 dist/
 build/
 *.egg-info/
+
+# Research Papers / Large Documents
+*.pdf
+
