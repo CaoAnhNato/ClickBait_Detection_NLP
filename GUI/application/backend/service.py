@@ -4,19 +4,33 @@ import os
 import re
 import sys
 import threading
+import time
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from config import AppSettings
+from .config import AppSettings
 
 
 class ORCDPredictService:
     def __init__(self, settings: AppSettings):
         self._settings = settings
+        self._is_warmed_up = False
         self._predict_lock = threading.RLock()
         self._service = self._build_reference_service()
+        self._start_time = time.time()
+
+    def warm_up(self) -> dict[str, Any]:
+        self._install_litellm_compat_if_needed()
+        self._service.preload_orcd_model()
+        self._is_warmed_up = True
+        return {
+            "warmed_up": True,
+            "device": str(self._service.device),
+            "model": self._settings.model_key,
+        }
 
     def _build_reference_service(self) -> Any:
         gui_test_dir = self._settings.gui_test_dir
@@ -48,7 +62,7 @@ class ORCDPredictService:
         service = ClickbaitModelService(
             weights_root=local_weights_root,
             preload_local_models=False,
-            preload_orcd_model=False,
+            preload_orcd_model=True,
         )
 
         # Pin ORCD paths explicitly so backend always points to local checkpoint.
@@ -129,7 +143,14 @@ class ORCDPredictService:
     @staticmethod
     def _is_api_backend_model(model_key: str) -> bool:
         lowered = (model_key or "").strip().lower()
-        return lowered.startswith("orcd") or lowered.startswith("gpt") or lowered.startswith("gemini") or lowered.startswith("qwen") or lowered.startswith("llama")
+        return (
+            lowered.startswith("orcd")
+            or lowered.startswith("gpt")
+            or lowered.startswith("gemini")
+            or lowered.startswith("qwen")
+            or lowered.startswith("llama")
+            or lowered.startswith("generate")
+        )
 
     def _invoke_predict(self, normalized_title: str, model_key: str) -> dict[str, Any]:
         needs_api_key = self._is_api_backend_model(model_key)
@@ -241,3 +262,191 @@ class ORCDPredictService:
 
     def clear_cache(self) -> None:
         self._predict_cached.cache_clear()
+        self._predict_for_model_cached.cache_clear()
+
+    @lru_cache(maxsize=1024)
+    def _predict_for_model_cached(self, normalized_title: str, model_key: str) -> dict[str, Any]:
+        result = self._predict_for_model(normalized_title, model_key)
+        return self._build_result(result, model_key)
+
+    def _predict_for_model(
+        self,
+        normalized_title: str,
+        model_key: str,
+    ) -> dict[str, Any]:
+        needs_api_key = self._is_api_backend_model(model_key)
+        api_key = self._resolve_api_key() if needs_api_key else ""
+
+        result = self._service.predict(
+            text=normalized_title,
+            model_key=model_key,
+            api_key=api_key,
+            custom_api_model=(self._settings.api_model_override if needs_api_key else ""),
+            custom_api_provider=(self._settings.api_provider_override if needs_api_key else ""),
+            custom_api_base=(self._settings.api_base_override if needs_api_key else ""),
+        )
+        return result
+
+    def _build_result(self, result: dict[str, Any], effective_model_key: str) -> dict[str, Any]:
+        label = int(result.get("label", 0))
+        confidence = float(result.get("confidence", 0.0)) * 100.0
+        return {
+            "is_clickbait": label == 1,
+            "confidence": round(max(0.0, min(100.0, confidence)), 2),
+            "label": label,
+            "model": str(result.get("model", effective_model_key)),
+            "device": str(self._service.device),
+        }
+
+    def predict_single(
+        self,
+        title: str,
+        model_key: str | None = None,
+        use_cache: bool = True,
+    ) -> dict[str, Any]:
+        normalized_title = self._normalize_title(title)
+        if not normalized_title:
+            raise ValueError("title must not be empty")
+
+        effective_model_key = (model_key or "").strip() or str(self._settings.model_key)
+        if not effective_model_key:
+            raise RuntimeError("No model key configured")
+
+        # Check model key is valid
+        if effective_model_key not in self._get_valid_model_keys():
+            raise ValueError(f"Unsupported model: {effective_model_key}")
+
+        if use_cache:
+            hits_before = self._predict_cached.cache_info().hits
+            result = dict(self._predict_cached(normalized_title))
+            hits_after = self._predict_cached.cache_info().hits
+            result["cached"] = hits_after > hits_before
+        else:
+            raw_result = self._predict_for_model(normalized_title, effective_model_key)
+            result = self._build_result(raw_result, effective_model_key)
+            result["cached"] = False
+
+        return result
+
+    def predict_batch(
+        self,
+        titles: list[str],
+        model_key: str | None = None,
+        use_cache: bool = True,
+        max_workers: int = 4,
+    ) -> list[dict[str, Any]]:
+        if not titles:
+            return []
+
+        effective_model_key = (model_key or "").strip() or str(self._settings.model_key)
+        if not effective_model_key:
+            raise RuntimeError("No model key configured")
+
+        results: list[dict[str, Any]] = []
+        cached_count = 0
+
+        for title in titles:
+            normalized_title = self._normalize_title(title)
+            if not normalized_title:
+                results.append({
+                    "title": title,
+                    "is_clickbait": False,
+                    "confidence": 0.0,
+                    "label": 0,
+                    "model": effective_model_key,
+                    "device": str(self._service.device),
+                    "cached": False,
+                    "error": "empty title",
+                })
+                continue
+
+            try:
+                if use_cache:
+                    hits_before = self._predict_for_model_cached.cache_info().hits
+                    result = dict(self._predict_for_model_cached(normalized_title, effective_model_key))
+                    hits_after = self._predict_for_model_cached.cache_info().hits
+                    cached = hits_after > hits_before
+                else:
+                    raw_result = self._predict_for_model(normalized_title, effective_model_key)
+                    result = self._build_result(raw_result, effective_model_key)
+                    cached = False
+
+                if cached:
+                    cached_count += 1
+
+                result["title"] = title
+                results.append(result)
+            except Exception as exc:  # noqa: BLE001
+                results.append({
+                    "title": title,
+                    "is_clickbait": False,
+                    "confidence": 0.0,
+                    "label": 0,
+                    "model": effective_model_key,
+                    "device": str(self._service.device),
+                    "cached": False,
+                    "error": str(exc),
+                })
+
+        return results
+
+    def predict_compare(
+        self,
+        title: str,
+        model_keys: list[str],
+    ) -> list[dict[str, Any]]:
+        normalized_title = self._normalize_title(title)
+        if not normalized_title:
+            raise ValueError("title must not be empty")
+
+        if len(model_keys) < 2:
+            raise ValueError("At least 2 models required for comparison")
+        if len(model_keys) > 10:
+            raise ValueError("Maximum 10 models for comparison")
+
+        results: list[dict[str, Any]] = []
+
+        for mk in model_keys:
+            if mk not in self._get_valid_model_keys():
+                results.append({
+                    "model": mk,
+                    "label": 0,
+                    "confidence": 0.0,
+                    "is_clickbait": False,
+                    "elapsed_ms": 0.0,
+                    "error": f"Unsupported model: {mk}",
+                })
+                continue
+
+            started = time.perf_counter()
+            try:
+                raw_result = self._predict_for_model(normalized_title, mk)
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+                label = int(raw_result.get("label", 0))
+                confidence = float(raw_result.get("confidence", 0.0)) * 100.0
+                results.append({
+                    "model": mk,
+                    "label": label,
+                    "confidence": round(max(0.0, min(100.0, confidence)), 2),
+                    "is_clickbait": label == 1,
+                    "elapsed_ms": elapsed_ms,
+                })
+            except Exception as exc:  # noqa: BLE001
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+                results.append({
+                    "model": mk,
+                    "label": 0,
+                    "confidence": 0.0,
+                    "is_clickbait": False,
+                    "elapsed_ms": elapsed_ms,
+                    "error": str(exc),
+                })
+
+        return results
+
+    def _get_valid_model_keys(self) -> set[str]:
+        """Return set of valid model keys supported by the backend."""
+        return set(self._service.available_models().keys())
+
+    def uptime_seconds(self) -> float:
+        return round(time.time() - self._start_time, 2)

@@ -1,9 +1,10 @@
 (() => {
   const API_ENDPOINTS = [
     "http://127.0.0.1:8000/predict",
-    "http://localhost:8000/predict"
+    "http://localhost:8000/predict",
+    "http://0.0.0.0:8000/predict",
   ];
-  const REQUEST_TIMEOUT_MS = 45000;
+  const REQUEST_TIMEOUT_MS = 60000;
 
   function parseBackendDetail(payload, fallbackStatus) {
     if (payload && typeof payload === "object") {

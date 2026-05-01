@@ -108,6 +108,12 @@ MODEL_REGISTRY = {
         "disagree_analysis_every_n": 3,
         "enable_payload_preview": False,
     },
+    "generate-and-predict": {
+        "label": "Generate & Predict (GPT3.5 + ModelBART)",
+        "backend": "generate_and_predict",
+        "api_model": "gpt-3.5-turbo-1106",
+        "base_url": "https://api-v2.shopaikey.com/v1",
+    },
 }
 
 

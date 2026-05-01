@@ -46,11 +46,27 @@ GPT-Shot/**/checkpoint.txt
 results/
 logs/
 
+# --- ORCD specific overrides ---
+!ORCD/
+!ORCD/**/data/
+!ORCD/**/train/
+!ORCD/**/*.csv
+!ORCD/**/*.py
+!ORCD/**/*.ipynb
+# Explicitly keep weights ignored everywhere inside ORCD
+ORCD/**/*.pth
+ORCD/**/*.pt
+ORCD/**/*.bin
+# -------------------------------
+
 # Test Reports and Coverages
 .coverage
 htmlcov/
 .pytest_cache/
 test-reports/
+**/artifacts/pw_user_data/
+**/tests/artifacts/
+
 
 # Builds / Distributions
 dist/

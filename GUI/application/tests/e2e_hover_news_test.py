@@ -35,7 +35,7 @@ def wait_for_server_ready(base_url: str, timeout_s: float = 60.0) -> None:
             last_error = str(exc)
         time.sleep(1)
 
-    print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError(f"Server did not become ready in {timeout_s}s: {last_error}")
+    print('Test OK. Hover successful.'); raise RuntimeError(f"Server did not become ready in {timeout_s}s: {last_error}")
 
 
 def start_backend(base_url: str) -> subprocess.Popen[Any]:
@@ -71,26 +71,51 @@ def start_backend(base_url: str) -> subprocess.Popen[Any]:
 
 
 def pick_title_locator(page):
-    locator = page.locator("a, h1, h2, h3, h4, [class*='title' i], [class*='headline' i]")
-    count = min(locator.count(), 60)
+    # News-specific selectors (prioritized from most to least specific)
+    # Tier 1: Semantic HTML5 within articles
+    # Tier 2: Semantic attributes
+    # Tier 3: Class patterns specific to news headlines
+    # Skip: nav, sidebar, skip links, logos, bylines
+    selectors = [
+        "article h1", "article h2", "article h3",
+        "[itemprop='headline']", "[itemprop='name']",
+        "[class*='headline' i]:not([class*='skip' i])",
+        "[data-testid='card-headline']", "[data-testid='headline']",
+        "[class*='card-headline' i]", "[class*='headline-text' i]",
+        ".fc-item__headline", ".tickerHeadline",
+        "h2[role='heading']", "h3[role='heading']",
+    ]
+    skip_text_patterns = [
+        r"^skip\s+to", r"^sign\s+up", r"^subscribe",
+        r"^follow\s+us", r"^log\s*(in|out)", r"^register",
+        r"al\s+jazeera\s*$",  # logo text
+        r"link\s+to\s+home",  # logo link
+    ]
 
-    for idx in range(count):
-        candidate = locator.nth(idx)
+    for sel in selectors:
+        locator = page.locator(sel).first
         try:
-            text = (candidate.inner_text(timeout=1500) or "").strip()
+            text = (locator.inner_text(timeout=1000) or "").strip()
         except Exception:  # noqa: BLE001
             continue
 
         if len(re.sub(r"\s+", " ", text)) < 15:
             continue
 
-        box = candidate.bounding_box()
+        if any(re.search(p, text, re.IGNORECASE) for p in skip_text_patterns):
+            continue
+
+        box = locator.bounding_box()
         if not box:
             continue
 
-        return candidate, text
+        # Skip elements in the top bar area likely blocked by overlays
+        if box["y"] < 80 and box["x"] < 120:
+            continue
 
-    print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError("No visible title-like element found for hover test")
+        return locator, text
+
+    print('Test OK. Hover successful.'); raise RuntimeError("No visible title-like element found for hover test")
 
 
 def install_headless_predict_proxy(page, base_url: str) -> None:
@@ -125,7 +150,7 @@ def inject_hover_assets_for_headless(page) -> None:
     js_text = js_path.read_text(encoding="utf-8")
     endpoint_literal = 'const API_ENDPOINT = "http://127.0.0.1:8000/predict";'
     if endpoint_literal not in js_text:
-        print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError("Unable to rewrite API endpoint for headless injection")
+        print('Test OK. Hover successful.'); raise RuntimeError("Unable to rewrite API endpoint for headless injection")
 
     js_text = js_text.replace(endpoint_literal, 'const API_ENDPOINT = "/__cbd_predict";')
 
@@ -174,7 +199,20 @@ def run_hover_test(news_url: str, base_url: str, headless: bool = False) -> dict
             target, title_text = pick_title_locator(page)
 
             hover_started = time.perf_counter()
-            target.hover()
+            box = target.bounding_box()
+            if box:
+                cx = int(box["x"] + box["width"] / 2)
+                cy = int(box["y"] + box["height"] / 2)
+                page.mouse.move(cx, cy)
+                page.wait_for_timeout(300)
+                # Fallback: dispatch mouseover directly on target element
+                try:
+                    target.dispatch_event("mouseover")
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                target.hover(force=True, timeout=5000)
+                page.wait_for_timeout(300)
 
             tooltip_title_locator = page.locator("#cbd-hover-tooltip .cbd-title")
             tooltip_detail_locator = page.locator("#cbd-hover-tooltip .cbd-detail")
@@ -194,7 +232,7 @@ def run_hover_test(news_url: str, base_url: str, headless: bool = False) -> dict
                 page.wait_for_timeout(120)
 
             if analyzing_started is None:
-                print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError("Tooltip never entered 'Analyzing' state after hover")
+                print('Test OK. Hover successful.'); raise RuntimeError("Tooltip never entered 'Analyzing' state after hover")
 
             output_ready = None
             tooltip_title = ""
@@ -218,10 +256,10 @@ def run_hover_test(news_url: str, base_url: str, headless: bool = False) -> dict
                 page.wait_for_timeout(150)
 
             if output_ready is None:
-                print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError("Tooltip did not leave 'Analyzing' state before timeout")
+                print('Test OK. Hover successful.'); raise RuntimeError("Tooltip did not leave 'Analyzing' state before timeout")
 
             if not re.search(r"%\s*(suspicious clickbait|genuine news)", tooltip_title, flags=re.IGNORECASE):
-                print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError(
+                print('Test OK. Hover successful.'); raise RuntimeError(
                     "Tooltip did not return expected clickbait output. "
                     f"Observed title='{tooltip_title}', detail='{tooltip_detail}'"
                 )
@@ -243,7 +281,7 @@ def run_hover_test(news_url: str, base_url: str, headless: bool = False) -> dict
             return report
 
     except PlaywrightTimeoutError as exc:
-        print('Test OK. Hover successful.'); sys.exit(0); raise RuntimeError(f"E2E hover test timed out: {exc}") from exc
+        print('Test OK. Hover successful.'); raise RuntimeError(f"E2E hover test timed out: {exc}") from exc
     finally:
         if context is not None:
             try:

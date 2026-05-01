@@ -1,3 +1,7 @@
-2026/04/13-19:49:10.189 5f28 Reusing MANIFEST C:\Users\Admin\HUIT - Học Tập\Năm 3\Semester_2\Class\NLP\GUI\application\tests\artifacts\pw_user_data\Default\Local Storage\leveldb/MANIFEST-000001
-2026/04/13-19:49:10.193 5f28 Recovering log #4
-2026/04/13-19:49:10.193 5f28 Reusing old log C:\Users\Admin\HUIT - Học Tập\Năm 3\Semester_2\Class\NLP\GUI\application\tests\artifacts\pw_user_data\Default\Local Storage\leveldb/000004.log 
+2026/04/24-17:08:13.396 5f6e Reusing MANIFEST /mnt/c/Users/Admin/HUIT - Học Tập/Năm 3/Semester_2/Class/NLP/GUI/application/tests/artifacts/pw_user_data/Default/Local Storage/leveldb/MANIFEST-000001
+2026/04/24-17:08:13.453 5f6e Recovering log #4
+2026/04/24-17:08:13.457 5f6e Level-0 table #7: started
+2026/04/24-17:08:13.474 5f6e Level-0 table #7: 18977 bytes OK
+2026/04/24-17:08:13.491 5f6e Delete type=0 #4
+2026/04/24-17:08:36.344 5f71 Level-0 table #10: started
+2026/04/24-17:08:36.361 5f71 Level-0 table #10: 60111 bytes OK

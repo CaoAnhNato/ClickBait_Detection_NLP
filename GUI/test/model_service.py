@@ -1,27 +1,32 @@
 from __future__ import annotations
 
+import asyncio
 import gc
 import importlib.util
 import json
 import re
 import time
-from json import JSONDecodeError
 from concurrent.futures import ThreadPoolExecutor
+from json import JSONDecodeError
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import pandas as pd
 
 try:
     import torch
-except ImportError:  # pragma: no cover - environment-specific dependency
+    from torch.utils.data import Dataset as _TorchDataset
+    from torch.utils.data import DataLoader as _TorchDataLoader
+except ImportError:
     torch = None
+    _TorchDataset = None
+    _TorchDataLoader = None
 
 try:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, BertTokenizer, RobertaModel, RobertaTokenizer
     from transformers.utils import logging
     logging.set_verbosity_error()
-except ImportError:  # pragma: no cover - environment-specific dependency
+except ImportError:
     AutoModelForSequenceClassification = None
     AutoTokenizer = None
     BertTokenizer = None
@@ -32,13 +37,12 @@ try:
     from litellm import completion
     import litellm
     litellm.suppress_debug_info = True
-except ImportError:  # pragma: no cover - environment-specific dependency
+except ImportError:
     completion = None
 
 try:
     from .model_registry import MODEL_REGISTRY, get_weights_root
 except ImportError:
-    # Support running as a script: `python app.py` from GUI directory.
     from model_registry import MODEL_REGISTRY, get_weights_root
 
 
@@ -182,6 +186,10 @@ class ClickbaitModelService:
 
         if profile.get("backend") == "sheepdog":
             self._ensure_sheepdog_model_loaded(model_key)
+            return
+
+        if profile.get("backend") == "generate_and_predict":
+            self._ensure_orcd_model_loaded()
             return
 
         raise ValueError(f"Unknown backend for model: {model_key}")
@@ -1533,6 +1541,21 @@ class ClickbaitModelService:
             result["elapsed_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
             return result
 
+        if backend == "generate_and_predict":
+            clean_api_key = (api_key or "").strip()
+            if not clean_api_key:
+                raise ValueError("API key is required for generate-and-predict")
+            result = self._predict_with_generate_and_predict(
+                clean_text,
+                model_key,
+                clean_api_key,
+                custom_api_model=(custom_api_model or "").strip(),
+                custom_api_provider=(custom_api_provider or "").strip(),
+                custom_api_base=(custom_api_base or "").strip(),
+            )
+            result["elapsed_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+            return result
+
         self.load_model(model_key)
 
         try:
@@ -1551,3 +1574,168 @@ class ClickbaitModelService:
         result_payload["model"] = model_key
         result_payload["elapsed_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
         return result_payload
+
+    # ------------------------------------------------------------------
+    # generate_and_predict pipeline: GPT-3.5 scoring + ModelBART inference
+    # ------------------------------------------------------------------
+
+    def _build_generate_and_predict_reason(self, score: int, is_clickbait: bool) -> str:
+        if is_clickbait:
+            base = (
+                "The title presents an engaging topic that aligns with common reader interests. "
+                "Logically, it invites curiosity without overreaching. "
+                "The content appears complete and the language remains relatively neutral, "
+                f"supporting a moderate belief level of {score}/100."
+            )
+        else:
+            base = (
+                "The title presents factual information that aligns with established knowledge. "
+                "Logically, it avoids sensationalism and follows a straightforward narrative. "
+                "The content is complete and the language is objective, "
+                f"supporting a moderate belief level of {score}/100."
+            )
+        return f'["[{base}]"]'
+
+    def _run_gpt35_score_generation(
+        self,
+        title: str,
+        api_key: str,
+        api_model: str,
+        api_base: str,
+        api_provider: str,
+    ) -> Dict[str, int]:
+        prompt = (
+            "Goal: As a news expert, evaluate the title's content and score it according to the criteria below.\n"
+            "Requirement 1: The title is '" + title + "'.\n"
+            "Requirement 2: Make a comprehensive inference about the title from four aspects: common sense, logic, content integrity, and objectivity.\n"
+            "Requirement 3: First, assign an \"original_score\" representing the general public's agreement/belief level with the title (30 to 70).\n"
+            "Requirement 4: Then, formulate an \"agree_reason\" (40-60 words) that advocates for the title being completely truthful. Based on this, assign an \"agree_score\" that must be at least 15 points higher than original_score (up to 100).\n"
+            "Requirement 5: Finally, formulate a \"disagree_reason\" (40-60 words) that highlights any illogical leaps or vague language. Based on this, assign a \"disagree_score\" that must be at least 15 points lower than original_score (down to 0).\n"
+            "Requirement 6: All scores should be strictly single integers.\n"
+            "Requirement 7: The output MUST be a valid JSON object with EXACTLY three numeric fields: \"original_score\", \"agree_score\", \"disagree_score\". Do not output the reason text, just the final scores."
+        )
+
+        request_kwargs: Dict[str, Any] = {
+            "model": api_model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful and expert news analyst."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 150,
+            "api_key": api_key,
+            "api_base": api_base,
+            "timeout": 30.0,
+        }
+        if "shopaikey.com" in (api_base or ""):
+            request_kwargs["custom_llm_provider"] = "openai"
+        elif api_provider:
+            request_kwargs["custom_llm_provider"] = api_provider
+
+        if completion is None:
+            raise RuntimeError("Missing dependency: install litellm to use generate-and-predict")
+
+        response = completion(**request_kwargs)
+        raw = self._extract_litellm_text(response)
+        try:
+            data = json.loads(raw)
+            return {
+                "original_score": int(data.get("original_score", 50)),
+                "agree_score": int(data.get("agree_score", 80)),
+                "disagree_score": int(data.get("disagree_score", 20)),
+            }
+        except Exception:
+            return {"original_score": 50, "agree_score": 85, "disagree_score": 35}
+
+    def _tokenize_gnp(self, text: str) -> List[int]:
+        assert self._orcd_tokenizer is not None
+        output = self._orcd_tokenizer(
+            text,
+            truncation=True,
+            padding="max_length",
+            max_length=self._orcd_max_len,
+        )
+        return output["input_ids"]
+
+    def _predict_with_generate_and_predict(
+        self,
+        text: str,
+        model_key: str,
+        api_key: str,
+        custom_api_model: Optional[str] = None,
+        custom_api_provider: Optional[str] = None,
+        custom_api_base: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        profile = MODEL_REGISTRY[model_key]
+        base_url = (custom_api_base or "").strip() or profile["base_url"]
+        requested_provider = (custom_api_provider or "").strip()
+        requested_api_model = (custom_api_model or "").strip() or profile["api_model"]
+        api_model = self._resolve_api_model_name(requested_api_model, base_url=base_url)
+
+        generation_started = time.perf_counter()
+        scores = self._run_gpt35_score_generation(
+            title=text,
+            api_key=api_key,
+            api_model=api_model,
+            api_base=base_url,
+            api_provider=requested_provider,
+        )
+        gpt_time_ms = round((time.perf_counter() - generation_started) * 1000, 2)
+
+        self._ensure_orcd_model_loaded()
+        assert torch is not None
+        assert self._orcd_model_bundle is not None
+
+        agree_reason = self._build_generate_and_predict_reason(scores["agree_score"], True)
+        disagree_reason = self._build_generate_and_predict_reason(scores["disagree_score"], True)
+
+        content_ids = torch.tensor([self._tokenize_gnp(text)], device=self._device).long()
+        pos_ids = torch.tensor([self._tokenize_gnp(agree_reason)], device=self._device).long()
+        neg_ids = torch.tensor([self._tokenize_gnp(disagree_reason)], device=self._device).long()
+
+        bundle = self._orcd_model_bundle
+        inference_started = time.perf_counter()
+        with torch.no_grad():
+            content = bundle["bert"](content_ids)
+            positive = bundle["bert2"](pos_ids)
+            negative = bundle["bert3"](neg_ids)
+
+            (pos_reason2text, pos_text2reason, positive,
+             neg_reason2text, neg_text2reason, negative) = bundle["attention"](
+                 content, positive, negative
+             )
+
+            _, r2t_aligned_agr, _ = bundle["r2t_usefulness"](content, pos_reason2text)
+            _, t2r_aligned_agr, _ = bundle["t2r_usefulness"](content, pos_text2reason)
+            _, r_aligned_agr, _ = bundle["reason_usefulness"](content, positive)
+            _, r2t_aligned_dis, _ = bundle["r2t_usefulness"](content, neg_reason2text)
+            _, t2r_aligned_dis, _ = bundle["t2r_usefulness"](content, neg_text2reason)
+            _, r_aligned_dis, _ = bundle["reason_usefulness"](content, negative)
+
+            final_feature = bundle["aggregator"](
+                content,
+                r2t_aligned_agr, t2r_aligned_agr, r_aligned_agr,
+                r2t_aligned_dis, t2r_aligned_dis, r_aligned_dis,
+            )
+            logits = bundle["detection_module"](final_feature)
+            probs = torch.softmax(logits, dim=1)
+            pred = int(torch.argmax(probs, dim=1).item())
+            confidence = float(probs[0, pred].item())
+
+        model_time_ms = round((time.perf_counter() - inference_started) * 1000, 2)
+
+        return {
+            "label": pred,
+            "confidence": confidence,
+            "model": model_key,
+            "api_model_used": api_model,
+            "raw_response": json.dumps({
+                "original_score": scores["original_score"],
+                "agree_score": scores["agree_score"],
+                "disagree_score": scores["disagree_score"],
+            }, ensure_ascii=False),
+            "telemetry": {
+                "gpt35_generation_ms": gpt_time_ms,
+                "model_inference_ms": model_time_ms,
+            },
+        }

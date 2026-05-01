@@ -1,0 +1,19 @@
+1. Chạy server :
+cd GUI/application
+
+PYTHONPATH="$(pwd):$(pwd)/tests" \
+ORCD_MODEL_KEY=generate-and-predict \
+ORCD_API_KEY=sk-RcgPIw5nCUPMPRBydQNn7cWb68ESkyEaOoPCsT6s5IdaqX3v \
+ORCD_API_MODEL_OVERRIDE=gpt-3.5-turbo-1106 \
+ORCD_API_BASE_OVERRIDE=https://api-v2.shopaikey.com/v1 \
+ORCD_API_PROVIDER_OVERRIDE=openai \
+/home/nato/ENTER/envs/MLE/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+sau đó chạy lệnh sau ở power shell:
+netsh interface portproxy add v4tov4 listenport=8000 listenaddress=127.0.0.1 connectport=8000 connectaddress=<WSL2_IP>
+
+
+2. test server :
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"title": "This Vine Of New York On Celebrity Big Brother Is Perfect"}'

@@ -33,6 +33,12 @@ A practical application layer showcasing the models' functionality.
 * **FastAPI Backend**: Serves predictions to client apps by routing inputs through the various specialized detectors available in the suite.
 * **Chrome Extension**: A real-time hover-to-evaluate tool providing probabilities and trustworthiness scores for news headlines on any website.
 
+#### 🎥 GUI Demo
+<div align="center">
+  <video src="example/func.mp4" width="100%" controls></video>
+</div>
+
+
 ## 🛠️ Installation & Setup
 
 We recommend setting up a virtual environment (e.g., `venv` or `conda`):
